@@ -11,7 +11,9 @@ A PHP and MySQL web application for recording, rating and managing reviews of me
 - [Features](#features)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
+- [Architecture](#architecture)
 - [Database](#database)
+- [Key Implementation Decisions](#key-implementation-decisions)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Known Limitations](#known-limitations)
@@ -74,6 +76,25 @@ UMS-Food-Review/
 └── LabTest_2_documentation.pdf
 ```
 
+## Architecture
+
+The application follows the **MVC pattern** with a single front controller:
+
+```
+Browser ──▶ index.php (front controller / router)
+                │  reads ?action=...
+                ▼
+         ReviewController ──▶ models (ReviewModel, UserModel) ──▶ MySQL (food_review_db)
+                │
+                ▼
+         views (home, review_form, view_review, edit_review, profile) ──▶ HTML response
+```
+
+- **Controller:** `ReviewController` receives the request, validates and sanitises input, calls the models, and chooses the view to render.
+- **Models:** encapsulate database access for reviews and users, keeping SQL out of the controller and views.
+- **Views:** PHP templates that only present data, sharing a common `header.php` and `footer.php`.
+- **Routing:** the `action` query parameter (for example `index.php?action=edit&id=1`) selects the controller method; no framework is used.
+
 ## Database
 
 Database name: `food_review_db`
@@ -82,6 +103,23 @@ Database name: `food_review_db`
 | --- | --- | --- |
 | `users` | Reviewer profile | `id`, `matric_no` (unique), `name`, `age`, `hometown`, `profile_image` |
 | `reviews` | Food reviews | `id`, `user_id` (FK to `users`), `food_name`, `restaurant_name`, `food_category`, `dining_date`, `rating`, `review_text`, `created_at`, `updated_at` |
+
+### Design notes
+
+- **Two tables, one relationship.** One user has many reviews, linked by `reviews.user_id` → `users.id` with `ON DELETE CASCADE`, so removing a user removes their reviews and no orphans remain.
+- **`matric_no` is unique**, so each student has a single profile.
+- **Automatic timestamps.** `created_at` defaults to the current time and `updated_at` refreshes itself on every update.
+- **Indexed foreign key** (`reviews.user_id`) keeps lookups of a user's reviews efficient.
+- **InnoDB with `utf8mb4`** provides foreign-key support and full Unicode (including emoji) in review text.
+
+## Key Implementation Decisions
+
+- **MVC with a front controller** keeps request handling, data access and presentation separate, which makes each part easier to read, change and test.
+- **Server-side validation:** required fields are checked and ratings must be between 1 and 5, so bad input is rejected before it reaches the database.
+- **Input sanitising:** user input is trimmed and escaped with `htmlspecialchars` to reduce the risk of cross-site scripting.
+- **Referential integrity in the database**, not just in application code, via the cascading foreign key.
+- **Immediate feedback:** success and error messages are shown after each action so users know what happened.
+- **Schema shipped as SQL** (`food_review_db.sql`) with sample data so the project can be set up in minutes.
 
 ## Installation
 
@@ -133,6 +171,8 @@ Use the form on the home page to add new reviews.
 - There is no login system. The application uses a single, pre-seeded reviewer profile.
 - The delete action is triggered by a link, so it should be protected with a confirmation step and a POST request before any real deployment.
 - Intended for local, educational use; it has not been hardened for production.
+- **The rating range (1 to 5) is enforced by the application only.** The `rating` column has no `CHECK` constraint, so rows written outside the app are not validated.
+- **Input is HTML-escaped before it is stored**, so saved text contains entities. Escaping on output instead (and storing raw text) avoids double-encoding if the text is later reused elsewhere.
 
 ## Documentation
 
